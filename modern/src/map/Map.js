@@ -1,19 +1,22 @@
-import 'mapbox-gl/dist/mapbox-gl.css';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import './switcher/switcher.css';
-import mapboxgl from 'mapbox-gl';
+import maplibregl from 'maplibre-gl';
+import React, {
+  useRef, useLayoutEffect, useEffect, useState,
+} from 'react';
 import { SwitcherControl } from './switcher/switcher';
-import React, { useRef, useLayoutEffect, useEffect, useState } from 'react';
-import { deviceCategories } from '../common/deviceCategories';
-import { loadIcon, loadImage } from './mapUtil';
+import deviceCategories from '../common/deviceCategories';
+import { prepareIcon, loadImage } from './mapUtil';
 import { styleCarto, styleMapbox, styleOsm } from './mapStyles';
 import t from '../common/localization';
 import { useAttributePreference } from '../common/preferences';
+import palette from '../theme/palette';
 
 const element = document.createElement('div');
 element.style.width = '100%';
 element.style.height = '100%';
 
-export const map = new mapboxgl.Map({
+export const map = new maplibregl.Map({
   container: element,
   style: styleOsm(),
 });
@@ -21,34 +24,43 @@ export const map = new mapboxgl.Map({
 let ready = false;
 const readyListeners = new Set();
 
-const addReadyListener = listener => {
+const addReadyListener = (listener) => {
   readyListeners.add(listener);
   listener(ready);
 };
 
-const removeReadyListener = listener => {
+const removeReadyListener = (listener) => {
   readyListeners.delete(listener);
 };
 
-const updateReadyValue = value => {
+const updateReadyValue = (value) => {
   ready = value;
-  readyListeners.forEach(listener => listener(value));
+  readyListeners.forEach((listener) => listener(value));
 };
 
 const initMap = async () => {
+  if (ready) return;
   const background = await loadImage('images/background.svg');
-  await Promise.all(deviceCategories.map(async category => {
-    if (!map.hasImage(category)) {
-      const imageData = await loadIcon(category, background, `images/icon/${category}.svg`);
-      map.addImage(category, imageData, { pixelRatio: window.devicePixelRatio });
-    }
+  map.addImage('background', await prepareIcon(background), {
+    pixelRatio: window.devicePixelRatio,
+  });
+  await Promise.all(deviceCategories.map(async (category) => {
+    const results = [];
+    ['green', 'red', 'gray'].forEach((color) => {
+      results.push(loadImage(`images/icon/${category}.svg`).then((icon) => {
+        map.addImage(`${category}-${color}`, prepareIcon(background, icon, palette.common[color]), {
+          pixelRatio: window.devicePixelRatio,
+        });
+      }));
+    });
+    await Promise.all(results);
   }));
   updateReadyValue(true);
 };
 
 map.on('load', initMap);
 
-map.addControl(new mapboxgl.NavigationControl({
+map.addControl(new maplibregl.NavigationControl({
   showCompass: false,
 }));
 
@@ -82,11 +94,11 @@ const Map = ({ children }) => {
   const mapboxAccessToken = useAttributePreference('mapboxAccessToken');
 
   useEffect(() => {
-    mapboxgl.accessToken = mapboxAccessToken;
+    maplibregl.accessToken = mapboxAccessToken;
   }, [mapboxAccessToken]);
 
   useEffect(() => {
-    const listener = ready => setMapReady(ready);
+    const listener = (ready) => setMapReady(ready);
     addReadyListener(listener);
     return () => {
       removeReadyListener(listener);

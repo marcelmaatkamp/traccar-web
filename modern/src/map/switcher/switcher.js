@@ -1,5 +1,4 @@
 export class SwitcherControl {
-
   constructor(styles, defaultStyle, beforeSwitch, afterSwitch) {
     this.styles = styles;
     this.defaultStyle = defaultStyle;
@@ -15,20 +14,20 @@ export class SwitcherControl {
   onAdd(map) {
     this.map = map;
     this.controlContainer = document.createElement('div');
-    this.controlContainer.classList.add('mapboxgl-ctrl');
-    this.controlContainer.classList.add('mapboxgl-ctrl-group');
+    this.controlContainer.classList.add('maplibregl-ctrl');
+    this.controlContainer.classList.add('maplibregl-ctrl-group');
     this.mapStyleContainer = document.createElement('div');
     this.styleButton = document.createElement('button');
     this.styleButton.type = 'button';
-    this.mapStyleContainer.classList.add('mapboxgl-style-list');
+    this.mapStyleContainer.classList.add('maplibregl-style-list');
     for (const style of this.styles) {
       const styleElement = document.createElement('button');
       styleElement.type = 'button';
       styleElement.innerText = style.title;
       styleElement.classList.add(style.title.replace(/[^a-z0-9-]/gi, '_'));
       styleElement.dataset.uri = JSON.stringify(style.uri);
-      styleElement.addEventListener('click', event => {
-        const srcElement = event.srcElement;
+      styleElement.addEventListener('click', (event) => {
+        const { srcElement } = event;
         if (srcElement.classList.contains('active')) {
           return;
         }
@@ -48,8 +47,8 @@ export class SwitcherControl {
       }
       this.mapStyleContainer.appendChild(styleElement);
     }
-    this.styleButton.classList.add('mapboxgl-ctrl-icon');
-    this.styleButton.classList.add('mapboxgl-style-switcher');
+    this.styleButton.classList.add('maplibregl-ctrl-icon');
+    this.styleButton.classList.add('maplibregl-style-switcher');
     this.styleButton.addEventListener('click', () => {
       this.styleButton.style.display = 'none';
       this.mapStyleContainer.style.display = 'block';

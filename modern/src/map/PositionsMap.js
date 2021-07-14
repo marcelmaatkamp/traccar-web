@@ -1,34 +1,47 @@
 import React, { useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import mapboxgl from 'mapbox-gl';
+import maplibregl from 'maplibre-gl';
 import { Provider, useSelector } from 'react-redux';
 
+import { useHistory } from 'react-router-dom';
 import { map } from './Map';
 import store from '../store';
-import { useHistory } from 'react-router-dom';
 import StatusView from './StatusView';
 
 const PositionsMap = ({ positions }) => {
   const id = 'positions';
+  const clusters = `${id}-clusters`;
 
   const history = useHistory();
-  const devices = useSelector(state => state.devices.items);
+  const devices = useSelector((state) => state.devices.items);
+
+  const deviceColor = (device) => {
+    switch (device.status) {
+      case 'online':
+        return 'green';
+      case 'offline':
+        return 'red';
+      default:
+        return 'gray';
+    }
+  };
 
   const createFeature = (devices, position) => {
-    const device = devices[position.deviceId] || null;
+    const device = devices[position.deviceId];
     return {
       deviceId: position.deviceId,
-      name: device ? device.name : '',
-      category: device && (device.category || 'default'),
-    }
+      name: device.name,
+      category: device.category || 'default',
+      color: deviceColor(device),
+    };
   };
 
   const onMouseEnter = () => map.getCanvas().style.cursor = 'pointer';
   const onMouseLeave = () => map.getCanvas().style.cursor = '';
 
-  const onClickCallback = useCallback(event => {
+  const onMarkerClick = useCallback((event) => {
     const feature = event.features[0];
-    let coordinates = feature.geometry.coordinates.slice();
+    const coordinates = feature.geometry.coordinates.slice();
     while (Math.abs(event.lngLat.lng - coordinates[0]) > 180) {
       coordinates[0] += event.lngLat.lng > coordinates[0] ? 360 : -360;
     }
@@ -36,34 +49,53 @@ const PositionsMap = ({ positions }) => {
     const placeholder = document.createElement('div');
     ReactDOM.render(
       <Provider store={store}>
-        <StatusView deviceId={feature.properties.deviceId} onShowDetails={positionId => history.push(`/position/${positionId}`)} />
+        <StatusView deviceId={feature.properties.deviceId} onShowDetails={(positionId) => history.push(`/position/${positionId}`)} />
       </Provider>,
-      placeholder
+      placeholder,
     );
 
-    new mapboxgl.Popup({
+    new maplibregl.Popup({
       offset: 25,
-      anchor: 'top'
+      anchor: 'top',
     })
       .setDOMContent(placeholder)
       .setLngLat(coordinates)
       .addTo(map);
   }, [history]);
 
-  useEffect(() => {
-    map.addSource(id, {
-      'type': 'geojson',
-      'data': {
-        type: 'FeatureCollection',
-        features: [],
+  const onClusterClick = (event) => {
+    const features = map.queryRenderedFeatures(event.point, {
+      layers: [clusters],
+    });
+    const clusterId = features[0].properties.cluster_id;
+    map.getSource(id).getClusterExpansionZoom(clusterId, (error, zoom) => {
+      if (!error) {
+        map.easeTo({
+          center: features[0].geometry.coordinates,
+          zoom,
+        });
       }
     });
+  };
+
+  useEffect(() => {
+    map.addSource(id, {
+      type: 'geojson',
+      data: {
+        type: 'FeatureCollection',
+        features: [],
+      },
+      cluster: true,
+      clusterMaxZoom: 14,
+      clusterRadius: 50,
+    });
     map.addLayer({
-      'id': id,
-      'type': 'symbol',
-      'source': id,
-      'layout': {
-        'icon-image': '{category}',
+      id,
+      type: 'symbol',
+      source: id,
+      filter: ['!', ['has', 'point_count']],
+      layout: {
+        'icon-image': '{category}-{color}',
         'icon-allow-overlap': true,
         'text-field': '{name}',
         'text-allow-overlap': true,
@@ -72,43 +104,62 @@ const PositionsMap = ({ positions }) => {
         'text-font': ['Roboto Regular'],
         'text-size': 12,
       },
-      'paint': {
+      paint: {
         'text-halo-color': 'white',
         'text-halo-width': 1,
+      },
+    });
+    map.addLayer({
+      id: clusters,
+      type: 'symbol',
+      source: id,
+      filter: ['has', 'point_count'],
+      layout: {
+        'icon-image': 'background',
+        'text-field': '{point_count_abbreviated}',
+        'text-font': ['Roboto Regular'],
+        'text-size': 14,
       },
     });
 
     map.on('mouseenter', id, onMouseEnter);
     map.on('mouseleave', id, onMouseLeave);
-    map.on('click', id, onClickCallback);
+    map.on('mouseenter', clusters, onMouseEnter);
+    map.on('mouseleave', clusters, onMouseLeave);
+    map.on('click', id, onMarkerClick);
+    map.on('click', clusters, onClusterClick);
 
     return () => {
-      Array.from(map.getContainer().getElementsByClassName('mapboxgl-popup')).forEach(el => el.remove());
+      Array.from(map.getContainer().getElementsByClassName('maplibregl-popup')).forEach((el) => el.remove());
 
       map.off('mouseenter', id, onMouseEnter);
       map.off('mouseleave', id, onMouseLeave);
-      map.off('click', id, onClickCallback);
+      map.off('mouseenter', clusters, onMouseEnter);
+      map.off('mouseleave', clusters, onMouseLeave);
+      map.off('click', id, onMarkerClick);
+      map.off('click', clusters, onClusterClick);
 
       map.removeLayer(id);
+      map.removeLayer(clusters);
       map.removeSource(id);
     };
-  }, [onClickCallback]);
+  }, [onMarkerClick]);
 
   useEffect(() => {
     map.getSource(id).setData({
       type: 'FeatureCollection',
-      features: positions.map(position => ({
+      features: positions.filter((it) => devices.hasOwnProperty(it.deviceId)).map((position) => ({
         type: 'Feature',
         geometry: {
           type: 'Point',
           coordinates: [position.longitude, position.latitude],
         },
         properties: createFeature(devices, position),
-      }))
+      })),
     });
   }, [devices, positions]);
 
   return null;
-}
+};
 
 export default PositionsMap;
